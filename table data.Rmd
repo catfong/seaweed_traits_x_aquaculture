@@ -1,0 +1,63 @@
+---
+title: "check value"
+author: "CRF"
+date: "2024-10-09"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- PUBLICATION NOTES
+  WORKING DIRECTORY: Open aqua_traits.Rproj in this folder (File > Open Project),
+  or setwd() to this folder, before running. All paths below are relative.
+  INPUTS:
+    - species_codes.csv
+    - fao_value.csv
+    - fao_volume.csv
+    - Aquaculture_Value.csv   (~4 MB; FAO value extract)
+    - un_country_codes.csv
+  OUTPUTS written here: value_and_volume.csv, countries_farming.csv
+-->
+
+```{r value and volume}
+library(tidyverse)
+
+# INPUTS: relative to project folder — change only if files live elsewhere
+fao_value<-read.csv("fao_value.csv")
+fao_volume<-read.csv("fao_volume.csv")
+species_codes<-read.csv("species_codes.csv")
+
+table<-left_join(species_codes, fao_value, by="species_code")
+table<-left_join(table, fao_volume, by="species_code")
+table$value_USDA<-table$value_1000*1000
+write.table(table, "value_and_volume.csv", sep=",", row.names = F)
+
+
+```
+
+
+```{r check countries}
+fao_dat<-read.csv("Aquaculture_Value.csv")
+country<-read.csv("un_country_codes.csv")
+dat<-subset(fao_dat, PERIOD==2021)
+
+unique(country$name)
+code<-c(table$species_code)
+
+# Filter fao_dat to only include SPECIES.ALPHA_3_CODE in code
+filtered_fao_data <- dat %>%
+  filter(SPECIES.ALPHA_3_CODE %in% code)
+
+filtered_fao_data<-left_join(filtered_fao_data,country, by=c("COUNTRY.UN_CODE"="country.code"))
+
+countries_farming<-(table(filtered_fao_data$SPECIES.ALPHA_3_CODE, filtered_fao_data$name))
+write.csv(countries_farming, "countries_farming.csv", row.names = T)
+countries_farming<-read.csv("countries_farming.csv")
+
+table<-left_join(table, countries_farming, by=c("species_code"="X"))
+
+
+write.table(table, "value_and_volume.csv", sep=",", row.names = F)
+
+
+```

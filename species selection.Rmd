@@ -1,0 +1,62 @@
+---
+title: "species"
+author: "CRF"
+date: "2023-09-29"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- PUBLICATION NOTES
+  WORKING DIRECTORY: Open aqua_traits.Rproj in this folder (File > Open Project),
+  or setwd() to this folder, before running. All paths below are relative.
+  INPUTS:
+    - fao_data.csv          (~54 MB; FAO global production extract)
+    - fao_spp_code.csv      (FAO species code / taxonomy list)
+  Data downloaded September 29, 2023 from:
+  https://www.fao.org/fishery/statistics-query/en/global_production/global_production_quantity
+  OUTPUTS written here: species.csv, species_x_country.csv, volume.csv
+-->
+
+Data downloaded September 29, 2023 from https://www.fao.org/fishery/statistics-query/en/global_production/global_production_quantity
+
+```{r libraries}
+library(tidyverse)
+
+```
+
+```{r read in and format data}
+
+# INPUTS: relative to project folder — change only if files live elsewhere
+data<-read.csv("fao_data.csv")
+head(data)
+
+# FAO species list; rename code column to match fao_data join key
+spp<-read.csv("fao_spp_code.csv")
+spp<-spp %>% rename(SPECIES.ALPHA_3_CODE = X3A_Code)
+
+data<-subset(data, PRODUCTION_SOURCE_DET.CODE!="CAPTURE") #remove all capture
+unique(data$PRODUCTION_SOURCE_DET.CODE) #check
+data<-subset(data, PRODUCTION_SOURCE_DET.CODE=="MARINE") #only keep marine species
+unique(data$PRODUCTION_SOURCE_DET.CODE) #check
+unique(data$SPECIES.ALPHA_3_CODE)
+
+dat<-full_join(data, spp, by="SPECIES.ALPHA_3_CODE") #31747 
+dat<-subset(dat, Major_Group=="PLANTAE AQUATICAE") #only aquatic plants, 3655
+dat<-subset(dat, PRODUCTION_SOURCE_DET.CODE=="MARINE") #marine only, 3392
+species<-as.data.frame(unique(dat$Scientific_Name))
+
+write.table(species, "species.csv", col.names = T, sep=",")
+
+
+species_x_country<-as.data.frame(table(dat$Scientific_Name, dat$COUNTRY.UN_CODE))
+
+species_x_country<-subset(species_x_country, Freq>0)
+
+write.table(species_x_country, "species_x_country.csv", col.names=T, sep=",")
+
+
+volume<-subset(dat, PERIOD==2021)
+
+write.table(volume, "volume.csv", col.names=T, sep=",")
+```
