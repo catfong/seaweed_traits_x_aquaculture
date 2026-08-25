@@ -15,10 +15,10 @@ Scripts 1–2 are independent of 3. Script 3 only needs `aqua_traits.csv`, `uses
 | File | Used by |
 |------|---------|
 | `aqua_traits.csv`, `uses.csv`, `all_spp.csv` | `aquaculture_x_traits.Rmd` |
-| `fao_data.csv`, `fao_spp_code.csv` | `species selection.Rmd` |
+| `fao_spp_code.csv` | `species selection.Rmd` |
 | `species_codes.csv`, `fao_value.csv`, `fao_volume.csv`, `Aquaculture_Value.csv`, `un_country_codes.csv` | `table data.Rmd` |
 
-Large FAO extracts (`fao_data.csv`, `Aquaculture_Value.csv`) are local downloads; see notes at the top of each Rmd for sources/dates.
+Large FAO data may need to be downloaded directly from FAO website.
 
 ## Packages
 
