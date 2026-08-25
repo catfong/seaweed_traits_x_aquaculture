@@ -1,0 +1,1041 @@
+---
+title: "aquaculture_by_traits"
+author: "CRF"
+date: "2023-02-21"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- PUBLICATION NOTES
+  WORKING DIRECTORY: Open aqua_traits.Rproj in this folder (File > Open Project),
+  or setwd() to this folder, before running. All paths below are relative.
+  INPUTS (do not move/rename unless you update the read.csv calls):
+    - aqua_traits.csv
+    - uses.csv
+    - all_spp.csv
+  OPTIONAL: set.seed() before metaMDS if you need identical NMDS axes across runs.
+-->
+
+```{r libraries}
+library(cluster)
+library(vegan)
+library(ggplot2)
+library(tidyverse)
+library(Rtsne)
+library(factoextra)
+library(FD)
+library(nnet)
+library(mlogit)
+library(NbClust)
+library(viridis)
+library(RVAideMemoire)
+library(ecodist)
+library(ggpubr)
+library(effects)
+library(visreg)
+library(DescTools)  # install once if needed: install.packages("DescTools")
+library(ggrepel)
+
+```
+
+
+```{r read and format}
+# INPUT: aqua_traits.csv (relative to project folder)
+traits<-read.csv('aqua_traits.csv')
+species<-traits$Species.name
+traits<-column_to_rownames(traits, var="Species.name")
+
+traits<-traits[2:19]
+head(traits)
+
+traits$life_cycle=as.factor(traits$life_cycle)
+traits$gametes=as.factor(traits$gametes)
+traits$size=as.integer(traits$size)
+traits$branching=as.factor(traits$branching)
+traits$tissue_complexity=as.factor(traits$tissue_complexity)
+traits$attachment=as.factor(traits$attachment)
+traits$stype=as.factor(traits$stype)
+traits$calcification=as.factor(traits$calcification)
+traits$coenocyte=as.factor(traits$coenocyte)
+traits$thickness=as.factor(traits$thickness)
+traits$growth=as.factor(traits$growth)
+traits$pneumatocysts=as.factor(traits$pneumatocysts)
+traits$articulated=as.factor(traits$articulated)
+traits$position_to_benthos=as.factor(traits$position_to_benthos)
+traits$blades=as.factor(traits$blades)
+traits$branch_shape=as.factor(traits$branch_shape)
+traits$midrib=as.factor(traits$midrib)
+traits$blade_category=as.factor(traits$blade_category)
+
+
+```
+
+
+```{r gower and groups}
+
+gower_dist <- daisy(traits, metric = c("gower"))
+groupings <- c(NA)
+names<-c(NA)
+for(i in 2:25){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  groupings[i] <-as.data.frame(pam_fit$clustering)
+  names[i]<-(attributes(pam_fit$clustering))
+  
+}
+names<-as.data.frame(species)
+groupings<-as.data.frame(groupings)
+
+nums<-c(1:25)
+nums<-as.character(nums)
+colnames(groupings)<-nums
+groupings<-cbind(names, groupings)
+
+pairwise.perm.manova(gower_dist, groupings[,3], p.method="none") 
+pairwise.perm.manova(gower_dist, groupings[,4], p.method="none")
+pairwise.perm.manova(gower_dist, groupings[,5], p.method="none")
+pairwise.perm.manova(gower_dist, groupings[,6], p.method="none")
+pairwise.perm.manova(gower_dist, groupings[,7], p.method="none")#fail
+
+groups<-cbind(groupings[,6], traits)
+
+```
+
+```{r nmds and figure}
+
+nmds=metaMDS(gower_dist, try=20, trymax=100)
+
+stressplot(nmds)
+
+NMDS1 = nmds$points[,1]
+NMDS2 = nmds$points[,2]
+group = groupings[,6]
+NMDS = data.frame(NMDS1 = NMDS1, NMDS2 = NMDS2, group) 
+NMDS$group=as.factor(NMDS$group)
+levels(NMDS$group) <- c("A", "B", "C", "D", "E")
+
+write.table(NMDS, "groups.csv",row.names = T,sep=",")
+
+species_colors<-c("#A7634D","#B37576", "#C18E9C","#E299A1", "#E5C1C1")
+
+nmds_fig<-ggplot(NMDS, aes(NMDS1, NMDS2, color=group))+
+  geom_point(size=2)+##separates overlapping points
+    xlim(-.4, .4)+ylim(-.3, .2)+
+stat_ellipse(type='t',linewidth =1.5, level=.5)+ ##LEVEL= confidence interval ellipses
+  scale_linetype_manual(values=c(0,2))+
+  theme_classic()+
+  theme(legend.position.inside=c(.9,.8), 
+        legend.text=element_text(size=15),
+        axis.text = element_text(size=15)
+        )+
+  theme(legend.title=element_blank())+
+  scale_color_manual(values = species_colors)
+
+```
+
+
+```{r read in the uses data}
+
+# INPUT: uses.csv (relative to project folder)
+use<-read.csv("uses.csv")
+use[use > 0] <- 1 
+use[is.na(use)] <- 0
+use$Food<-as.factor(use$Food)
+use$Feed<-as.factor(use$Feed)
+use$Hydrocolloid<-as.factor(use$Hydrocolloid)
+use$Biofuel<-as.factor(use$Biofuel)
+use$Fertilizer<-as.factor(use$Fertilizer)
+
+
+#this ended up not being super informative
+df <- tibble::rownames_to_column(NMDS, "Species.name")
+names<-read.csv("uses.csv")
+names<-names[1]
+use<-use[2:6]
+use<-cbind(names, use)
+try<-left_join(df, use, by="Species.name")
+
+str(try)
+
+use<-ggplot(try, aes(NMDS1, NMDS2, color=group))+
+  geom_point(size=2)+
+  xlim(-.4, .4)+ylim(-.3, .2)+
+  stat_ellipse(aes(group=Food, linetype=Food), level=0.5, color="coral3", linewidth=2)+ 
+  stat_ellipse(aes(group=Feed, linetype=Feed), level=0.5, color="darkgoldenrod1", linewidth=2)+ 
+  stat_ellipse(aes(group=Hydrocolloid, linetype=Hydrocolloid), level=0.5, color="aquamarine4", linewidth=2)+ 
+  #stat_ellipse(type='t',linewidth =1.5, level=.5)+
+  scale_linetype_manual(values=c(0,2))+
+  theme_classic()+
+  theme(legend.position=c(.9,.8), 
+        legend.text=element_text(size=15),
+        axis.text = element_text(size=15)
+        )+
+  theme(legend.title=element_blank())+
+   scale_color_manual(values = species_colors)
+
+adonis2(try[2:3]~Food, data=try, perm=9999, method="euclidean")
+adonis2(try[2:3]~Feed, data=try, perm=9999, method="euclidean")
+adonis2(try[2:3]~Hydrocolloid, data=try, perm=9999, method="euclidean")
+
+adonis2(gower_dist~Feed, data=try, perm=9999, method="euclidean")
+adonis2(gower_dist~Food, data=try, perm=9999, method="euclidean")
+adonis2(gower_dist~Hydrocolloid, data=try, perm=9999, method="euclidean")
+
+
+ggarrange(nmds_fig, use) #1000 x 500
+
+```
+
+
+```{r all species}
+
+# INPUT: all_spp.csv (relative to project folder)
+traits_all<-read.csv('all_spp.csv')
+species<-traits_all$species
+traits_all<-column_to_rownames(traits_all, var="species")
+
+traits<-traits_all[1:18]
+head(traits)
+
+traits$life_cycle=as.factor(traits$life_cycle)
+traits$gametes=as.factor(traits$gametes)
+traits$size=as.integer(traits$size)
+traits$branching=as.factor(traits$branching)
+traits$tissue_complexity=as.factor(traits$tissue_complexity)
+traits$attachment=as.factor(traits$attachment)
+traits$stype=as.factor(traits$stype)
+traits$calcification=as.factor(traits$calcification)
+traits$coenocyte=as.factor(traits$coenocyte)
+traits$thickness=as.factor(traits$thickness)
+traits$growth=as.factor(traits$growth)
+traits$pneumatocysts=as.factor(traits$pneumatocysts)
+traits$articulated=as.factor(traits$articulated)
+traits$position_to_benthos=as.factor(traits$position_to_benthos)
+traits$blades=as.factor(traits$blades)
+traits$branch_shape=as.factor(traits$branch_shape)
+traits$midrib=as.factor(traits$midrib)
+traits$blade_category=as.factor(traits$blade_category)
+
+gower_dist <- daisy(traits, metric = c("gower"))
+
+nmds=metaMDS(gower_dist, try=20, trymax=100) #don't run again unless want to change trait space!
+NMDS1 = nmds$points[,1]
+NMDS2 = nmds$points[,2]
+
+use<-traits_all[19:24]
+use[is.na(use)] <- 0
+use$aquacultured<-as.factor(use$aquacultured)
+use$Food<-as.factor(use$Food)
+use$Feed<-as.factor(use$Feed)
+use$Hydrocolloid<-as.factor(use$Hydrocolloid)
+use$Biofuel<-as.factor(use$Biofuel)
+use$Fertilizer<-as.factor(use$Fertilizer)
+
+NMDS = data.frame(NMDS1 = NMDS1, NMDS2 = NMDS2) 
+
+NMDS<-cbind(NMDS, use)
+NMDS<-cbind(NMDS, group=traits_all$group)
+options(ggrepel.max.overlaps = Inf)
+
+
+one_supp<-ggplot(NMDS, aes(NMDS1, NMDS2, color=aquacultured))+
+  geom_point(size=2, aes(shape = aquacultured))+
+  geom_label_repel(aes(label = rownames(NMDS)),
+                  box.padding   = 0.35, 
+                  point.padding = 0.5,
+                  segment.color = 'grey50')+
+  stat_ellipse(type='t',linewidth =1.5, level=.5)+ ##LEVEL= confidence interval ellipses
+  theme_classic()+
+  theme(legend.position="none")+
+  theme(legend.title=element_blank())+
+  scale_color_manual(values = 
+                       c("#B37576", "#0186B3"))
+
+one<-ggplot(NMDS, aes(NMDS1, NMDS2, color=aquacultured))+
+  geom_point(size=2, aes(shape = aquacultured))+
+  stat_ellipse(type='t',linewidth =1.5, level=.5)+ 
+  theme_classic()+
+  theme(legend.position="none")+
+  theme(legend.title=element_blank())+
+  scale_color_manual(values = 
+                       c("#0186B3","#B37576" ))
+
+
+
+two<-ggplot(NMDS, aes(NMDS1, NMDS2, color=aquacultured))+
+  geom_point(size=2, aes(shape = aquacultured))+
+  stat_ellipse(aes(group=Food, linetype=Food), level=0.5, color="coral3", linewidth=1.5)+ 
+  stat_ellipse(aes(group=Feed, linetype=Feed), level=0.5, color="darkgoldenrod1", linewidth=1.5)+ 
+  stat_ellipse(aes(group=Hydrocolloid, linetype=Hydrocolloid), level=0.5, color="aquamarine4", linewidth=1.5)+ 
+  stat_ellipse(aes(group=aquacultured, linetype=aquacultured), level=0.5, linewidth=1.5)+ 
+  #stat_ellipse(type='t',linewidth =1.5, level=.5)+
+  scale_linetype_manual(values=c(0,2,1,0))+
+  theme_classic()+
+  theme(legend.position="none"
+        )+
+  theme(legend.title=element_blank())+
+   scale_color_manual(values = 
+                       c("#0186B35f", "#B37576"))
+
+
+group<-ggplot(NMDS, aes(NMDS1, NMDS2, color=group))+
+  geom_point(size=2, aes(shape = aquacultured))+
+  stat_ellipse(type='t',linewidth =1.5, level=.5, na.rm=TRUE)+
+  theme_classic()+
+  #theme(legend.position="none")+
+  #theme(legend.title=element_blank())+
+  scale_color_manual(values = 
+                       c("#0186B35f", 
+                         "#A7634D","#B37576", "#C18E9C","#E299A1", "#E5C1C1"))
+
+
+ggarrange(group, two) #1000 x 500
+
+adonis2(gower_dist~aquacultured, data=NMDS, perm=9999, method="euclidean")
+adonis2(gower_dist~Feed, data=NMDS, perm=9999, method="euclidean")
+adonis2(gower_dist~Food, data=NMDS, perm=9999, method="euclidean")
+adonis2(gower_dist~Hydrocolloid, data=NMDS, perm=9999, method="euclidean")
+
+
+
+
+```
+
+
+```{r SIMPER on transformed trait matrix}
+
+traits_scaled <- traits
+
+# scale numeric variable
+traits_scaled$size <- scale(traits_scaled$size)
+
+# then dummy encode
+traits_dummy <- model.matrix(~ . -1, data = traits_scaled)
+group <- traits_all$aquacultured
+all(rownames(traits_dummy) == rownames(use))
+
+library(vegan)
+
+simper_res <- simper(traits_dummy, group = group)
+sim_sum <- summary(simper_res)
+
+sim_df <- as.data.frame(sim_sum[[1]])
+
+top50 <- sim_df[sim_df$cumsum <= 0.5, ]
+top50
+
+# Add trait names from rownames
+top50$Trait <- rownames(top50)
+
+# Clean up trait names
+top50$Trait <- gsub("([a-z])([A-Z])", "\\1 \\2", top50$Trait)  # camelCase → spaced
+top50$Trait <- gsub("_", " ", top50$Trait)                     # underscores → space
+top50$Trait <- tolower(top50$Trait)
+
+# Select key columns and rename for clarity
+table_S2 <- top50 %>%
+  dplyr::select(Trait, average, cumsum) %>%
+  dplyr::rename(
+    Contribution = average,
+    Cumulative = cumsum
+  )
+
+# Convert cumulative to percent and round nicely
+table_S2 <- table_S2 %>%
+  mutate(
+    Contribution = round(Contribution, 3),
+    Cumulative = round(Cumulative * 100, 1)
+  )
+
+# Print nicely
+table_S2
+
+
+
+```
+
+```{r}
+library(dplyr)
+library(vegan)
+
+# ---- Filter only aquacultured species ----
+traits_aqua <- traits_all %>% filter(aquacultured == "y")
+
+# Keep only traits columns (columns 2-19)
+traits_aqua_traits <- traits_aqua[, 2:19]
+
+# Convert characters to factors
+traits_aqua_traits <- traits_aqua_traits %>%
+  mutate(across(where(is.character), as.factor))
+
+# Scale numeric traits
+traits_aqua_traits$size <- scale(as.numeric(traits_aqua_traits$size))
+
+# Identify traits with only 1 level
+single_level_traits <- sapply(traits_aqua_traits, function(x) {
+  if(is.factor(x)) nlevels(x) < 2 else FALSE
+})
+single_level_traits_names <- names(single_level_traits[single_level_traits])
+single_level_traits_names
+#> these are traits to remove
+
+# Remove single-level traits
+traits_filtered <- traits_aqua_traits %>%
+  select(-all_of(single_level_traits_names))
+
+# traits_filtered is now safe for dummy encoding
+traits_filtered
+
+traits_dummy <- model.matrix(~ . -1, data = traits_filtered)
+
+library(vegan)
+library(dplyr)
+
+# Define the use categories
+use_cats <- c("Food", "Feed", "Hydrocolloid")
+
+# Initialize list to store results
+simper_list <- list()
+
+# Loop over each use
+for(use in use_cats){
+  # Only species with that use
+  species_use <- traits_aqua %>% filter(!is.na(.data[[use]]) & .data[[use]] == 1)
+  
+  if(nrow(species_use) > 1){  # need at least 2 species for SIMPER
+    # Match rownames in traits_dummy
+    traits_use_dummy <- traits_dummy[rownames(traits_dummy) %in% rownames(species_use), , drop=FALSE]
+    
+    # Group factor (all 1s, but required by simper)
+    group <- as.factor(species_use[[use]])
+    
+    # Run SIMPER
+    sim_res <- simper(traits_use_dummy, group = group)
+    sim_sum <- summary(sim_res)
+    
+    df <- as.data.frame(sim_sum[[1]])
+    
+    # Keep top ~50% cumulative contribution
+    df <- df %>%
+      mutate(UseCategory = use,
+             Trait = rownames(df)) %>%
+      filter(cumsum <= 0.5) %>%
+      select(UseCategory, Trait, Contribution = average, Cumulative = cumsum)
+    
+    simper_list[[use]] <- df
+  }
+}
+
+# Combine all results into one table
+simper_use_table <- bind_rows(simper_list)
+
+# Optional: view table
+simper_use_table
+
+simper_use_table_clean <- simper_use_table %>%
+  # Remove the ...# suffix from trait names
+  mutate(Trait = gsub("\\.\\.\\..*$", "", Trait),
+         # Round contribution and cumulative
+         Contribution = round(Contribution, 3),
+         Cumulative = round(Cumulative, 3)) %>%
+  select(UseCategory, Trait, Contribution, Cumulative)
+
+# View cleaned table
+simper_use_table_clean
+
+
+library(dplyr)
+library(stringr)
+
+# Clean trait names and round values
+simper_use_table_clean <- simper_use_table %>%
+  mutate(
+    Trait = str_replace(Trait, paste0(UseCategory, ""), ""),  # remove use prefix
+    Trait = str_replace_all(Trait, "\\.\\.\\..*$", ""),       # remove ... suffix
+    Contribution = round(Contribution, 3),
+    Cumulative = round(Cumulative, 3)
+  )
+
+# Keep top 5 traits per UseCategory
+simper_use_table_top5 <- simper_use_table_clean %>%
+  group_by(UseCategory) %>%
+  slice_max(order_by = Contribution, n = 5) %>%
+  arrange(UseCategory, desc(Contribution)) %>%
+  ungroup()
+
+# Function to format for Word
+format_word_block <- function(df, usecat) {
+  df_block <- df %>% filter(UseCategory == usecat)
+  block <- paste0(df_block$Trait, "\t", df_block$Contribution, "\t", df_block$Cumulative)
+  header <- paste0("UseCategory: ", usecat)
+  c(header, block, "")  # empty line after each category
+}
+
+# Create Word-ready output
+word_table <- c()
+for(usecat in unique(simper_use_table_top5$UseCategory)) {
+  word_table <- c(word_table, format_word_block(simper_use_table_top5, usecat))
+}
+
+# Print to console for copy-paste
+cat(paste(word_table, collapse = "\n"))
+
+simper_use_table_top5 <- simper_use_table_clean %>%
+  group_by(UseCategory) %>%
+  slice_max(order_by = Contribution, n = 5) %>%
+  ungroup()
+
+traits_aqua %>%
+  group_by(Hydrocolloid) %>%
+  summarise(mean_size = mean(size, na.rm = TRUE),
+            sd_size = sd(size, na.rm = TRUE))
+```
+
+```{r multinomial regressions; look in TRAITS.3.10.2020.R for how to store the predictions}
+#NMDS1 null--> McFadden pseudo-R2
+#http://dwoll.de/rexrepos/posts/regressionMultinom.html#mcfadden-cox-snell-and-nagelkerke-pseudo-r2
+# DescTools loaded in libraries chunk above
+
+#make sure you've run chunk with all traits first to set correct df
+dat<-cbind(NMDS, traits)
+head(dat)
+
+#NMDS 1
+
+model.null<-nnet::multinom(NMDS1~1, data=dat) #null model
+#create the null model
+LL0   <- logLik(model.null)
+xaxis.nmds1<-data.frame(NMDS1=seq(-0.4, 0.4, 0.01))
+
+#lifecycle
+NMDS1.life_cycle<-(nnet::multinom(life_cycle~NMDS1, data = dat)) 
+xaxis.nmds1$life_cycle<-predict(NMDS1.life_cycle, newdata=xaxis.nmds1, type='probs')
+#gametes
+NMDS1.gametes<-(nnet::multinom(gametes~NMDS1, data = dat)) 
+xaxis.nmds1$gametes<-predict(NMDS1.gametes, newdata=xaxis.nmds1, type='probs')
+#size
+NMDS1.size<-lm(size~NMDS1, data = dat) 
+xaxis.nmds1$size<-predict(NMDS1.size, newdata=xaxis.nmds1, type='response')
+#branching
+NMDS1.branching<-(nnet::multinom(branching~NMDS1, data = dat)) 
+xaxis.nmds1$branching<-predict(NMDS1.branching, newdata=xaxis.nmds1, type='probs')
+#tissue complexity
+NMDS1.tissue_complexity<-(nnet::multinom(tissue_complexity~NMDS1, data = dat)) 
+xaxis.nmds1$tissue_complexity<-predict(NMDS1.tissue_complexity, newdata=xaxis.nmds1, type='probs')
+#attachment
+NMDS1.attachment<-(nnet::multinom(attachment~NMDS1, data = dat)) 
+xaxis.nmds1$attachment<-predict(NMDS1.attachment, newdata=xaxis.nmds1, type='probs')
+#stype
+dat$stype<-as.factor(dat$stype)
+NMDS1.stype <- glm(stype ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$stype<-c(predict(NMDS1.stype, newdata=xaxis.nmds1, type='response'))
+#calcification
+dat$calcification<-as.factor(dat$calcification)
+NMDS1.calcification <- glm(calcification ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$calcification<-c(predict(NMDS1.calcification, newdata=xaxis.nmds1, type='response'))
+#coenocyte
+dat$coenocyte<-as.factor(dat$coenocyte)
+NMDS1.coenocyte <- glm(coenocyte ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$coenocyte<-c(predict(NMDS1.coenocyte, newdata=xaxis.nmds1, type='response'))
+#thickness --only 1 and 4 as options
+dat$thickness<-as.factor(dat$thickness)
+NMDS1.thickness<-(nnet::multinom(thickness~NMDS1, data = dat)) 
+xaxis.nmds1$thickness<-predict(NMDS1.thickness, newdata=xaxis.nmds1, type='probs')
+#growth
+NMDS1.growth<-(nnet::multinom(growth~NMDS1, data = dat)) 
+xaxis.nmds1$growth<-predict(NMDS1.growth, newdata=xaxis.nmds1, type='probs')
+#pneumatocysts
+dat$pneumatocysts<-as.factor(dat$pneumatocysts)
+NMDS1.pneumatocysts <- glm(pneumatocysts ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$pneumatocysts<-c(predict(NMDS1.pneumatocysts, newdata=xaxis.nmds1, type='response'))
+#articulated- all unarticulated
+#position to benthos-- all flexible!!!
+#blades
+dat$blades<-as.factor(dat$blades)
+NMDS1.blades <- glm(blades ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$blades<-c(predict(NMDS1.blades, newdata=xaxis.nmds1, type='response'))
+#branch shape
+NMDS1.branch_shape<-(nnet::multinom(branch_shape~NMDS1, data = dat)) 
+xaxis.nmds1$branch_shape<-predict(NMDS1.branch_shape, newdata=xaxis.nmds1, type='probs')
+#midrib
+dat$midrib<-as.factor(dat$midrib)
+NMDS1.midrib <- glm(midrib ~ NMDS1, data = dat, family = "binomial")
+xaxis.nmds1$midrib<-c(predict(NMDS1.midrib, newdata=xaxis.nmds1, type='response'))
+#blade category
+NMDS1.blade_category<-(nnet::multinom(blade_category~NMDS1, data = dat)) 
+xaxis.nmds1$blade_category<-predict(NMDS1.blade_category, newdata=xaxis.nmds1, type='probs')
+
+#NMDS 2
+
+model.null<-nnet::multinom(NMDS2~1, data=dat) #null model
+#create the null model
+LL0   <- logLik(model.null)
+xaxis.nmds2<-data.frame(NMDS2=seq(-0.3, 0.4, 0.1))
+
+#lifecycle
+NMDS2.life_cycle<-(nnet::multinom(life_cycle~NMDS2, data = dat)) 
+xaxis.nmds2$life_cycle<-predict(NMDS2.life_cycle, newdata=xaxis.nmds2, type='probs')
+#gametes
+NMDS2.gametes<-(nnet::multinom(gametes~NMDS2, data = dat)) 
+xaxis.nmds2$gametes<-predict(NMDS2.gametes, newdata=xaxis.nmds2, type='probs')
+#size
+NMDS2.size<-lm(size~NMDS2, data = dat) 
+xaxis.nmds2$size<-predict(NMDS2.size, newdata=xaxis.nmds2, type='response')
+#branching
+NMDS2.branching<-(nnet::multinom(branching~NMDS2, data = dat)) 
+xaxis.nmds2$branching<-predict(NMDS2.branching, newdata=xaxis.nmds2, type='probs')
+#tissue complexity
+NMDS2.tissue_complexity<-(nnet::multinom(tissue_complexity~NMDS2, data = dat)) 
+xaxis.nmds2$tissue_complexity<-predict(NMDS2.tissue_complexity, newdata=xaxis.nmds2, type='probs')
+#attachment
+NMDS2.attachment<-(nnet::multinom(attachment~NMDS2, data = dat)) 
+xaxis.nmds2$attachment<-predict(NMDS2.attachment, newdata=xaxis.nmds2, type='probs')
+#stype
+dat$stype<-as.factor(dat$stype)
+NMDS2.stype <- glm(stype ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$stype<-c(predict(NMDS2.stype, newdata=xaxis.nmds2, type='response'))
+#calcification
+dat$calcification<-as.factor(dat$calcification)
+NMDS2.calcification <- glm(calcification ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$calcification<-c(predict(NMDS2.calcification, newdata=xaxis.nmds2, type='response'))
+#coenocyte
+dat$coenocyte<-as.factor(dat$coenocyte)
+NMDS2.coenocyte <- glm(coenocyte ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$coenocyte<-c(predict(NMDS2.coenocyte, newdata=xaxis.nmds2, type='response'))
+#thickness
+NMDS2.thickness<-(nnet::multinom(thickness~NMDS2, data = dat)) 
+xaxis.nmds2$thickness<-predict(NMDS2.thickness, newdata=xaxis.nmds2, type='probs')
+#growth
+NMDS2.growth<-(nnet::multinom(growth~NMDS2, data = dat)) 
+xaxis.nmds2$growth<-predict(NMDS2.growth, newdata=xaxis.nmds2, type='probs')
+#pneumatocysts
+dat$pneumatocysts<-as.factor(dat$pneumatocysts)
+NMDS2.pneumatocysts <- glm(pneumatocysts ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$pneumatocysts<-c(predict(NMDS2.pneumatocysts, newdata=xaxis.nmds2, type='response'))
+#articulated
+dat$articulated<-as.factor(dat$articulated)
+NMDS2.articulated <- glm(articulated ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$articulated<-c(predict(NMDS2.articulated, newdata=xaxis.nmds2, type='response'))
+#position to benthos-- all flexible!!!
+#blades
+dat$blades<-as.factor(dat$blades)
+NMDS2.blades <- glm(blades ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$blades<-c(predict(NMDS2.blades, newdata=xaxis.nmds2, type='response'))
+#branch shape
+NMDS2.branch_shape<-(nnet::multinom(branch_shape~NMDS2, data = dat)) 
+xaxis.nmds2$branch_shape<-predict(NMDS2.branch_shape, newdata=xaxis.nmds2, type='probs')
+#midrib
+dat$midrib<-as.factor(dat$midrib)
+NMDS2.midrib <- glm(midrib ~ NMDS2, data = dat, family = "binomial")
+xaxis.nmds2$midrib<-c(predict(NMDS2.midrib, newdata=xaxis.nmds2, type='response'))
+#blade category
+NMDS2.blade_category<-(nnet::multinom(blade_category~NMDS2, data = dat)) 
+xaxis.nmds2$blade_category<-predict(NMDS2.blade_category, newdata=xaxis.nmds2, type='probs')
+```
+
+```{r MCFADDEN PSUEDO R2 NMDS1}
+
+#compare all factors
+#library("DescTools")
+#multinomial
+R2.NMDS1.life_cycle<- as.vector(1 - (logLik(NMDS1.life_cycle) / LL0))
+R2.NMDS1.gametes <- as.vector(1 - (logLik(NMDS1.gametes) / LL0))
+R2.NMDS1.branching <- as.vector(1 - (logLik(NMDS1.branching) / LL0))
+R2.NMDS1.tissue_complexity <- as.vector(1 - (logLik(NMDS1.tissue_complexity) / LL0))
+R2.NMDS1.attachment <- as.vector(1 - (logLik(NMDS1.attachment) / LL0))
+R2.NMDS1.thickness <- as.vector(1 - (logLik(NMDS1.thickness) / LL0))
+R2.NMDS1.growth <- as.vector(1 - (logLik(NMDS1.growth) / LL0))
+R2.NMDS1.branch_shape <- as.vector(1 - (logLik(NMDS1.branch_shape) / LL0))
+R2.NMDS1.blade_category <- as.vector(1 - (logLik(NMDS1.blade_category) / LL0))
+
+#binomial--> pick McFadden's here as well?
+R2.NMDS1.stype<- PseudoR2 (NMDS1.stype, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS1.calcification<- PseudoR2 (NMDS1.calcification, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS1.coenocyte <- PseudoR2(NMDS1.coenocyte, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS1.pneumatocysts <- PseudoR2(NMDS1.pneumatocysts, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS1.midrib <- (PseudoR2(NMDS1.midrib, which=c("McFadden", "CoxSnell", "Nagelkerke")))
+R2.NMDS1.blades<- PseudoR2(NMDS1.blades, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+
+
+R2.NMDS2.life_cycle<- as.vector(1 - (logLik(NMDS2.life_cycle) / LL0))
+R2.NMDS2.gametes <- as.vector(1 - (logLik(NMDS2.gametes) / LL0))
+R2.NMDS2.branching <- as.vector(1 - (logLik(NMDS2.branching) / LL0))
+R2.NMDS2.tissue_complexity <- as.vector(1 - (logLik(NMDS2.tissue_complexity) / LL0))
+R2.NMDS2.attachment <- as.vector(1 - (logLik(NMDS2.attachment) / LL0))
+R2.NMDS2.thickness <- as.vector(1 - (logLik(NMDS2.thickness) / LL0))
+R2.NMDS2.growth <- as.vector(1 - (logLik(NMDS2.growth) / LL0))
+R2.NMDS2.branch_shape <- as.vector(1 - (logLik(NMDS2.branch_shape) / LL0))
+R2.NMDS2.blade_category <- as.vector(1 - (logLik(NMDS2.blade_category) / LL0))
+
+#binomial--> pick McFadden's here as well?
+R2.NMDS2.stype<- PseudoR2 (NMDS2.stype, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS2.calcification<- PseudoR2 (NMDS2.calcification, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS2.coenocyte <- PseudoR2(NMDS2.coenocyte, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS2.pneumatocysts <- PseudoR2(NMDS2.pneumatocysts, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+R2.NMDS2.midrib <- (PseudoR2(NMDS2.midrib, which=c("McFadden", "CoxSnell", "Nagelkerke")))
+R2.NMDS2.blades<- PseudoR2(NMDS2.blades, which=c("McFadden", "CoxSnell", "Nagelkerke"))
+
+NMDS1.R2<-NULL
+NMDS1.R2<-rbind(NMDS1.R2,
+                'lifecycle'= c(R2.NMDS1.life_cycle),
+                'gametes'=c(R2.NMDS1.gametes),
+                'branching'=c(R2.NMDS1.branching), 
+                'tissue complexity'=c(R2.NMDS1.tissue_complexity), 
+                'attachment'=c(R2.NMDS1.attachment),
+                'thickness'=c(R2.NMDS1.thickness),
+                'growth'=c(R2.NMDS1.growth),
+                'branch shape'=c(R2.NMDS1.branch_shape), 
+                'blade category'=c(R2.NMDS1.blade_category) ,
+                'stipe'=c(R2.NMDS1.stype),
+                'coenocyte'=c(R2.NMDS1.coenocyte), 
+                'pneumatocysts'=c(R2.NMDS1.pneumatocysts),
+                'midrib'=c(R2.NMDS1.midrib),
+                'blades' =c(R2.NMDS1.blades),
+                'midrib'=c(R2.NMDS1.midrib),
+                'calcification'=c(R2.NMDS1.calcification))
+NMDS2.R2<-NULL
+NMDS2.R2<-rbind(NMDS1.R2,
+                'lifecycle'= c(R2.NMDS2.life_cycle),
+                'gametes'=c(R2.NMDS2.gametes),
+                'branching'=c(R2.NMDS2.branching), 
+                'tissue complexity'=c(R2.NMDS2.tissue_complexity), 
+                'attachment'=c(R2.NMDS2.attachment),
+                'thickness'=c(R2.NMDS2.thickness),
+                'growth'=c(R2.NMDS2.growth),
+                'branch shape'=c(R2.NMDS2.branch_shape), 
+                'blade category'=c(R2.NMDS2.blade_category) ,
+                'stipe'=c(R2.NMDS2.stype),
+                'coenocyte'=c(R2.NMDS2.coenocyte), 
+                'pneumatocysts'=c(R2.NMDS2.pneumatocysts),
+                'midrib'=c(R2.NMDS2.midrib),
+                'blades' =c(R2.NMDS2.blades),
+                'midrib'=c(R2.NMDS2.midrib))
+```
+
+```{r check which parameters}
+
+write.table(xaxis.nmds1, "xaxis.nmds1.csv", sep=",", row.names = F) #this clears those nasty attributes
+nmds1<-read.csv("xaxis.nmds1.csv")
+#THRESHOLD 0.75
+max(nmds1$life_cycle.alternation.of.generations) #N
+max(nmds1$life_cycle.diplobiontic) #N
+max(nmds1$life_cycle.triphasic) #N
+max(nmds1$gametes.anisogamous) #N
+max(nmds1$gametes.isogagmous) #N
+max(nmds1$size) #FIX?
+max(nmds1$branching.branching.off.main.axis) #N
+max(nmds1$branching.dichotomous) #N
+max(nmds1$branching.dichotomous) #N
+max(nmds1$branching.irregular)#N
+max(nmds1$branching.unbranched) #N
+max(nmds1$tissue_complexity.pseudoparenchymatous) #N
+max(nmds1$attachment.crustose) #N
+max(nmds1$attachment.rhizoidal) #N
+max(nmds1$attachment.rhizome) #N
+max(nmds1$thickness.2)#N
+max(nmds1$thickness.3)#N
+max(nmds1$growth.centripetal.invagination) #N
+max(nmds1$growth.diffuse) #N
+max(nmds1$pneumatocysts) #N
+max(nmds1$branch_shape.flattened) #N
+max(nmds1$branch_shape.none) #N
+max(nmds1$branch_shape.terete) #N
+max(nmds1$midrib) #N
+max(nmds1$blade_category.few.large) #N
+max(nmds1$blade_category.many.small) #N
+max(nmds1$blade_category.single)  #N  
+max(nmds1$growth.interacalary) #Y
+max(nmds1$gametes.oogamous) #Y
+max(nmds1$blade_category.none)#Y
+max(nmds1$blades) #Y
+max(nmds1$growth.tip) #Y
+max(nmds1$attachment.discoid) #Y
+max(nmds1$attachment.hapterous) #Y
+max(nmds1$tissue_complexity.parenchymatous) #Y
+max(nmds1$tissue_complexity.unicellular) #Y
+max(nmds1$stype) #Y
+max(nmds1$coenocyte) #Y
+max(nmds1$calcification) #Y
+
+
+write.table(xaxis.nmds2, "xaxis.nmds2.csv", sep=",", row.names = F) #this clears those nasty attributes
+nmds2<-read.csv("xaxis.nmds2.csv")
+
+max(nmds2$life_cycle.alternation.of.generations) #Y
+max(nmds2$life_cycle.triphasic) #Y
+max(nmds2$gametes.oogamous) #Y
+max(nmds2$tissue_complexity.pseudoparenchymatous) #Y
+max(nmds2$growth.diffuse) #Y
+max(nmds2$growth.tip) #Y
+max(nmds2$blades) #Y
+max(nmds2$branch_shape.none) #Y
+max(nmds2$blade_category.single)  #Y  
+max(nmds2$thickness.1)#Y
+max(nmds2$thickness.4)#Y
+
+
+max(nmds2$calcification) #N
+max(nmds2$tissue_complexity.unicellular) #N
+max(nmds2$tissue_complexity.parenchymatous) #N
+max(nmds2$life_cycle.diplobiontic) #N
+max(nmds2$gametes.anisogamous) #N
+max(nmds2$gametes.isogagmous) #N
+max(nmds2$size) #FIX?
+max(nmds2$branching.branching.off.main.axis) #N
+max(nmds2$branching.dichotomous) #N
+max(nmds2$branching.dichotomous) #N
+max(nmds2$branching.irregular)#N
+max(nmds2$branching.unbranched) #N
+max(nmds2$attachment.crustose) #N
+max(nmds2$attachment.discoid) #N
+max(nmds2$attachment.hapterous) #N
+max(nmds2$attachment.rhizoidal) #N
+max(nmds2$attachment.rhizome) #N
+max(nmds2$stype) #N
+max(nmds2$coenocyte) #N
+max(nmds2$thickness.2)#N
+max(nmds2$thickness.3)#N
+max(nmds2$growth.centripetal.invagination) #N
+max(nmds2$growth.interacalary) #N
+max(nmds2$pneumatocysts) #N
+max(nmds2$branch_shape.flattened) #N
+max(nmds2$branch_shape.terete) #N
+max(nmds2$midrib) #N
+max(nmds2$blade_category.few.large) #N
+max(nmds2$blade_category.many.small) #N
+max(nmds2$blade_category.none)#N
+
+
+```
+
+
+
+```{r figures}
+
+nmds1.oogamous<-ggplot(nmds1, aes(x=NMDS1, y=gametes.oogamous))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Oogamous")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.blade_category.none<-ggplot(nmds1, aes(x=NMDS1, y=blade_category.none))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Blade category = none")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.blades<-ggplot(nmds1, aes(x=NMDS1, y=blades))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("No blades")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.growth.tip<-ggplot(nmds1, aes(x=NMDS1, y=growth.tip))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Growth from tip")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.attachment.discoid<-ggplot(nmds1, aes(x=NMDS1, y=attachment.discoid))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Discoid attachment")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.attachment.hapterous<-ggplot(nmds1, aes(x=NMDS1, y=attachment.hapterous))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Hapterous attachment")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.tissue_complexity.parenchymatous<-ggplot(nmds1, aes(x=NMDS1, y=tissue_complexity.parenchymatous))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Parenchymatous")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.tissue_complexity.unicellular<-ggplot(nmds1, aes(x=NMDS1, y=tissue_complexity.unicellular))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Unicellular")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.stipe<-ggplot(nmds1, aes(x=NMDS1, y=stype))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Stipe")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.coenocyte<-ggplot(nmds1, aes(x=NMDS1, y=coenocyte))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Coenocyte")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.thickness.1<-ggplot(nmds1, aes(x=NMDS1, y=thickness.1))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Thickness = 1")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.thickness.4<-ggplot(nmds1, aes(x=NMDS1, y=thickness.4))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Thickness > 3")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.calcification<-ggplot(nmds1, aes(x=NMDS1, y=calcification))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Calcification")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds1.intercalary<-ggplot(nmds1, aes(x=NMDS1, y=growth.interacalary))+
+  ylim(0,1)+xlim(-0.4,0.4)+theme_classic()+
+  ggtitle("Intercalary")+
+  labs(x='', y='')+
+  geom_area(fill="mediumpurple")
+
+nmds2.life_cycle.alternation.of.generations<-ggplot(nmds2, aes(x=NMDS2, y=life_cycle.alternation.of.generations))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Alternation of generation")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.life_cycle.triphasic<-ggplot(nmds2, aes(x=NMDS2, y=life_cycle.triphasic))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Triphasic")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.gametes.oogamous<-ggplot(nmds2, aes(x=NMDS2, y=gametes.oogamous))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Oogamous")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.tissue_complexity.pseudoparenchymatous<-ggplot(nmds2, aes(x=NMDS2, y=tissue_complexity.pseudoparenchymatous))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Pseudoparenchymatous")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.growth.diffuse<-ggplot(nmds2, aes(x=NMDS2, y=growth.diffuse))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Diffuse growth")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.growth.tip<-ggplot(nmds2, aes(x=NMDS2, y=growth.tip))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Tip growth")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.blades<-ggplot(nmds2, aes(x=NMDS2, y=blades))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Blades")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.branch_shape.none<-ggplot(nmds2, aes(x=NMDS2, y=branch_shape.none))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Branch shape = none")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.blade_category.single<-ggplot(nmds2, aes(x=NMDS2, y=blade_category.single))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Blade category = single")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.thickness.1<-ggplot(nmds2, aes(x=NMDS2, y=thickness.1))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Thickness = 1")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+nmds2.thickness.4<-ggplot(nmds2, aes(x=NMDS2, y=thickness.4))+
+  ylim(0,1)+xlim(-0.3,0.4)+
+  theme_classic()+
+  ggtitle("Thickness > 3")+
+  labs(x='', y='')+
+  geom_area(fill="deeppink")
+
+```
+
+```{r arrange}
+#300 by 150 to export
+nmds1.oogamous
+nmds1.blade_category.none
+nmds1.blades
+nmds1.growth.tip
+nmds1.attachment.discoid
+nmds1.attachment.hapterous
+nmds1.tissue_complexity.parenchymatous
+nmds1.tissue_complexity.unicellular
+nmds1.stipe
+nmds1.coenocyte 
+nmds1.thickness.1
+nmds1.thickness.4
+nmds1.calcification
+
+nmds2.life_cycle.alternation.of.generations
+nmds2.life_cycle.triphasic
+nmds2.gametes.oogamous
+nmds2.tissue_complexity.pseudoparenchymatous
+nmds2.growth.diffuse
+nmds2.growth.tip
+nmds2.blades
+nmds2.branch_shape.none
+nmds2.blade_category.single
+nmds2.thickness.1
+nmds2.thickness.4
+
+#300x2100
+ggarrange(nmds1.oogamous,
+nmds1.blade_category.none,
+nmds1.blades,
+nmds1.growth.tip,
+nmds1.attachment.discoid,
+nmds1.attachment.hapterous,
+nmds1.tissue_complexity.parenchymatous,
+nmds1.tissue_complexity.unicellular,
+nmds1.stipe,
+nmds1.intercalary,
+nmds1.coenocyte ,
+nmds1.thickness.1,
+nmds1.thickness.4,
+nmds1.calcification,
+ncol=1)
+
+#300 x 1650
+ggarrange(nmds2.life_cycle.alternation.of.generations,
+nmds2.life_cycle.triphasic,
+nmds2.gametes.oogamous,
+nmds2.tissue_complexity.pseudoparenchymatous,
+nmds2.growth.diffuse,
+nmds2.growth.tip,
+nmds2.blades,
+nmds2.branch_shape.none,
+nmds2.blade_category.single,
+nmds2.thickness.1,
+nmds2.thickness.4,
+ncol=1)
+```
+

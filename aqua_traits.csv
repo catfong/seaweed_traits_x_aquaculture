@@ -1,0 +1,27 @@
+﻿Species name,synonym?,life_cycle,gametes,size,branching,tissue_complexity,attachment,stype,calcification,coenocyte,thickness,growth,pneumatocysts,articulated,position_to_benthos,blades,branch_shape,midrib,blade_category
+Alaria esculenta,,alternation of generations,oogamous,200,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,n,n,flexible,leaflike,flattened,y,few large
+Capsosiphon fulvescens,Ulva fulvescens,diplobiontic,isogagmous,30,unbranched,parenchymatous,discoid,n,n,n,1,diffuse,n,n,flexible,not leaflike,none,n,none
+Caulerpa racemosa,,diplobiontic,anisogamous,30,branching off main axis,unicellular,rhizome,n,n,y,1,tip,n,n,flexible,not leaflike,terete,n,many small
+Chondracanthus chamissoi,,triphasic,oogamous,20,branching off main axis,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Cladosiphon okamuranus,,alternation of generations,isogamous,30,irregular,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Codium fragile,,diplobiontic,anisogamous,10,dichotomous,unicellular,crustose,n,n,y,1,centripetal invagination,n,n,flexible,not leaflike,terete,n,none
+Enteromorpha prolifera,ulva prolifera,diplobiontic,anisogamous,50,branching off main axis,parenchymatous,discoid,n,n,n,1,diffuse,n,n,flexible,not leaflike,none,n,none
+Euchema denticulatum,,triphasic,oogamous,74,irregular,pseudoparenchymatous,rhizoidal,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Eucheuma isiforme,,triphasic,oogamous,30,irregular,pseudoparenchymatous,rhizoidal,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Gelidium amansii,,triphasic,oogamous,30,branching off main axis,pseudoparenchymatous,rhizoidal,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Gigartina skottsbergii,,triphasic,oogamous,100,none,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,leaflike,none,n,few large
+Gracilaria gracilis,,triphasic,oogamous,50,irregular,parenchymatous,discoid,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Gracilaria verrucosa,unclear what is present name - one place says gracilis,triphasic,oogamous,60,irregular,parenchymatous,discoid,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Kappaphycus alvarezii,,triphasic,oogamous,200,irregular,parenchymatous,discoid,n,n,n,4,tip,n,n,flexible,not leaflike,terete,n,none
+Laminaria digitata,,alternation of generations,oogamous,200,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,n,n,flexible,leaflike,none,n,single
+macrocystis pyrifera,,alternation of generations,oogamous,3050,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,y,n,flexible,leaflike,terete,n,many small
+Meristotheca senegalensis,,triphasic,oogamous,25,irregular,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,leaflike,flattened,n,many small
+Monostroma nitidum,,alternation of generations,anisogamous,12,none,parenchymatous,discoid,n,n,n,1,diffuse,n,n,flexible,leaflike,none,n,single
+palmaria palmata,,triphasic,oogamous,50,dichotomous,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,leaflike,flattened,n,many small
+Porphyra columbina,pyropia,triphasic,oogamous,20,none,parenchymatous,rhizoidal,n,n,n,1,diffuse,n,n,flexible,leaflike,none,n,single
+Porphyra tenera,pyropia,triphasic,oogamous,20,none,parenchymatous,rhizoidal,n,n,n,1,diffuse,n,n,flexible,leaflike,none,n,single
+saccharina latissima,,alternation of generations,oogamous,400,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,n,n,flexible,leaflike,none,n,single
+saccharina japonica,,alternation of generations,oogamous,400,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,n,n,flexible,leaflike,none,n,single
+Sarcothalia crispata,iridaea crspata,triphasic,oogamous,100,branching off main axis,pseudoparenchymatous,discoid,n,n,n,4,tip,n,n,flexible,leaflike,none,n,few large
+Sargassum fusiforme,,alternation of generations,oogamous,100,branching off main axis,parenchymatous,hapterous,y,n,n,4,interacalary,y,n,flexible,leaflike,terete,n,many small
+Undaria pinnatifida,,alternation of generations,oogamous,300,unbranched,parenchymatous,hapterous,y,n,n,4,interacalary,n,n,flexible,leaflike,none,y,single
